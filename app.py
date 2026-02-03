@@ -1,11 +1,15 @@
 from flask import Flask, request, jsonify
-import base64, os, joblib, subprocess
+import os
+import joblib
+import requests
 from features import extract_features
 
 app = Flask(__name__)
 
-auth_model = joblib.load("model/voiceguard_model.pkl")
-lang_model = joblib.load("model/language_model.pkl")
+# Load models
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+auth_model = joblib.load(os.path.join(BASE_DIR, "model/voiceguard_model.pkl"))
+lang_model = joblib.load(os.path.join(BASE_DIR, "model/language_model.pkl"))
 
 LANG_MAP_REV = {
     0: "tamil",
@@ -14,8 +18,6 @@ LANG_MAP_REV = {
     3: "malayalam",
     4: "telugu"
 }
-
-FFMPEG_PATH = "ffmpeg"  # works if ffmpeg in PATH
 
 def generate_explanation(classification, confidence):
     if classification == "AI_GENERATED":
@@ -29,28 +31,33 @@ def generate_explanation(classification, confidence):
         else:
             return "The voice appears human, but some synthetic traits were detected."
 
+@app.route("/", methods=["GET"])
+def home():
+    return jsonify({
+        "status": "VoiceGuard API is running",
+        "endpoint": "/detect"
+    })
+
 @app.route("/detect", methods=["POST"])
 def detect():
     data = request.json
-    audio_b64 = data["audio"]
 
-    # Save input
-    with open("temp_input", "wb") as f:
-        f.write(base64.b64decode(audio_b64))
+    # Get audio URL from request
+    audio_url = data.get("audio_url")
+    if not audio_url:
+        return jsonify({"error": "audio_url is required"}), 400
 
-    # Convert to wav (10 seconds)
-    subprocess.run([
-        FFMPEG_PATH,
-        "-y",
-        "-i", "temp_input",
-        "-t", "10",
-        "-ar", "16000",
-        "-ac", "1",
-        "temp.wav"
-    ])
+    # Download audio file
+    response = requests.get(audio_url)
+    if response.status_code != 200:
+        return jsonify({"error": "Unable to download audio file"}), 400
+
+    temp_path = "temp.wav"
+    with open(temp_path, "wb") as f:
+        f.write(response.content)
 
     # Extract features
-    features = extract_features("temp.wav")
+    features = extract_features(temp_path)
 
     # AI vs Human
     auth_pred = auth_model.predict([features])[0]
@@ -59,13 +66,13 @@ def detect():
 
     # Language
     lang_pred = lang_model.predict([features])[0]
-    language = LANG_MAP_REV[lang_pred]
+    language = LANG_MAP_REV.get(lang_pred, "unknown")
 
     # Explanation
     explanation = generate_explanation(classification, auth_prob)
 
-    os.remove("temp_input")
-    os.remove("temp.wav")
+    # Cleanup
+    os.remove(temp_path)
 
     return jsonify({
         "classification": classification,
@@ -76,3 +83,4 @@ def detect():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
