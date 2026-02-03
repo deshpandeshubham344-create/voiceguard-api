@@ -1,23 +1,17 @@
 # features.py
-import whisper
-import torch
 import numpy as np
+import wave
 
-model = whisper.load_model("tiny")   # << IMPORTANT: use tiny
+def extract_features(audio_path):
+    with wave.open(audio_path, "rb") as wf:
+        frames = wf.readframes(wf.getnframes())
+        signal = np.frombuffer(frames, dtype=np.int16)
 
-def extract_features(path, max_seconds=5):
-    audio = whisper.load_audio(path)
+    # Simple lightweight features
+    mean = float(np.mean(signal))
+    std = float(np.std(signal))
+    max_val = float(np.max(signal))
+    min_val = float(np.min(signal))
 
-    # Hard cut
-    max_samples = int(max_seconds * 16000)
-    audio = audio[:max_samples]
+    return [mean, std, max_val, min_val]
 
-    audio = whisper.pad_or_trim(audio)
-    mel = whisper.log_mel_spectrogram(audio)
-
-    with torch.no_grad():
-        emb = model.encoder(mel.unsqueeze(0))
-
-    # Mean pooling
-    features = emb.mean(dim=1).squeeze().numpy()
-    return features
