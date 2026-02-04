@@ -1,24 +1,12 @@
-# features.py
-import numpy as np
 import librosa
+import numpy as np
 
 def extract_features(audio_path):
-    # Load audio (force 16kHz mono)
-    y, sr = librosa.load(audio_path, sr=16000, mono=True)
+    y, sr = librosa.load(audio_path, sr=16000)
+    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=192)
 
-    # Extract 24 MFCCs
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=24)
+    mean = np.mean(mfcc, axis=1)
+    std = np.std(mfcc, axis=1)
 
-    # Take first 16 frames (24 x 16 = 384)
-    if mfcc.shape[1] < 16:
-        pad_width = 16 - mfcc.shape[1]
-        mfcc = np.pad(mfcc, ((0,0),(0,pad_width)), mode='constant')
-
-    mfcc = mfcc[:, :16]
-
-    # Flatten to 384 features
-    features = mfcc.flatten()
-
+    features = np.concatenate([mean, std])
     return features.tolist()
-
-
