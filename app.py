@@ -1,6 +1,8 @@
+
 from flask import Flask, request, jsonify
 import os
 import joblib
+from pydub import AudioSegment
 from features import extract_features
 
 app = Flask(__name__)
@@ -35,47 +37,57 @@ def home():
     return jsonify({
         "status": "VoiceGuard API is running",
         "endpoint": "/detect",
-        "note": "Upload WAV audio file using form-data"
+        "note": "Supports MP4, MP3, WAV (auto converted to WAV)"
     })
 
 @app.route("/detect", methods=["POST"])
 def detect():
-    # Expect file upload
-    if "file" not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
 
-    file = request.files["file"]
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"error": "Empty filename"}), 400
 
-    if file.filename == "":
-        return jsonify({"error": "Empty filename"}), 400
+        input_path = "input_audio"
+        output_path = "temp.wav"
 
-    # Save uploaded file
-    temp_path = "temp.wav"
-    file.save(temp_path)
+        # Save uploaded file (any format)
+        file.save(input_path)
 
-    # Extract features
-    features = extract_features(temp_path)
+        # Convert to WAV using ffmpeg via pydub
+        audio = AudioSegment.from_file(input_path)
+        audio = audio.set_frame_rate(16000).set_channels(1)
+        audio.export(output_path, format="wav")
 
-    # AI vs Human
-    auth_pred = auth_model.predict([features])[0]
-    auth_prob = auth_model.predict_proba([features])[0].max()
-    classification = "AI_GENERATED" if auth_pred == 1 else "HUMAN"
+        # Extract features
+        features = extract_features(output_path)
 
-    # Language
-    lang_pred = lang_model.predict([features])[0]
-    language = LANG_MAP_REV.get(lang_pred, "unknown")
+        # AI vs Human
+        auth_pred = auth_model.predict([features])[0]
+        auth_prob = auth_model.predict_proba([features])[0].max()
+        classification = "AI_GENERATED" if auth_pred == 1 else "HUMAN"
 
-    explanation = generate_explanation(classification, auth_prob)
+        # Language
+        lang_pred = lang_model.predict([features])[0]
+        language = LANG_MAP_REV.get(lang_pred, "unknown")
 
-    # Cleanup
-    os.remove(temp_path)
+        explanation = generate_explanation(classification, auth_prob)
 
-    return jsonify({
-        "classification": classification,
-        "confidence_score": float(auth_prob),
-        "detected_language": language,
-        "explanation": explanation
-    })
+        # Cleanup
+        os.remove(input_path)
+        os.remove(output_path)
+
+        return jsonify({
+            "classification": classification,
+            "confidence_score": float(auth_prob),
+            "detected_language": language,
+            "explanation": explanation
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
