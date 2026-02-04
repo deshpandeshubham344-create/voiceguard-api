@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify
 import os
 import joblib
-import requests
 from features import extract_features
 
 app = Flask(__name__)
@@ -36,34 +35,25 @@ def home():
     return jsonify({
         "status": "VoiceGuard API is running",
         "endpoint": "/detect",
-        "note": "Only WAV audio URLs are supported"
+        "note": "Upload WAV audio file using form-data"
     })
 
 @app.route("/detect", methods=["POST"])
 def detect():
-    data = request.json
+    # Expect file upload
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
 
-    audio_url = data.get("audio_url")
-    if not audio_url:
-        return jsonify({"error": "audio_url is required"}), 400
+    file = request.files["file"]
 
-    # Enforce WAV only
-    if not audio_url.lower().endswith(".wav"):
-        return jsonify({
-            "error": "Only WAV audio files are supported",
-            "example": "https://www2.cs.uic.edu/~i101/SoundFiles/StarWars3.wav"
-        }), 400
+    if file.filename == "":
+        return jsonify({"error": "Empty filename"}), 400
 
-    # Download WAV file
-    response = requests.get(audio_url)
-    if response.status_code != 200:
-        return jsonify({"error": "Unable to download audio file"}), 400
-
+    # Save uploaded file
     temp_path = "temp.wav"
-    with open(temp_path, "wb") as f:
-        f.write(response.content)
+    file.save(temp_path)
 
-    # Extract features (this will now work)
+    # Extract features
     features = extract_features(temp_path)
 
     # AI vs Human
@@ -77,6 +67,7 @@ def detect():
 
     explanation = generate_explanation(classification, auth_prob)
 
+    # Cleanup
     os.remove(temp_path)
 
     return jsonify({
@@ -88,5 +79,3 @@ def detect():
 
 if __name__ == "__main__":
     app.run(debug=True)
-
-
