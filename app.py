@@ -1,3 +1,5 @@
+import subprocess
+print(subprocess.run(["which", "ffmpeg"], capture_output=True, text=True))
 from flask import Flask, request, jsonify
 import os, subprocess, joblib
 from features import extract_features
