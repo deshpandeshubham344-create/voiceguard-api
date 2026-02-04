@@ -3,4 +3,5 @@ gunicorn
 joblib
 numpy
 scikit-learn
-pydub
+librosa
+soundfile
