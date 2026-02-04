@@ -35,19 +35,26 @@ def generate_explanation(classification, confidence):
 def home():
     return jsonify({
         "status": "VoiceGuard API is running",
-        "endpoint": "/detect"
+        "endpoint": "/detect",
+        "note": "Only WAV audio URLs are supported"
     })
 
 @app.route("/detect", methods=["POST"])
 def detect():
     data = request.json
 
-    # Get audio URL from request
     audio_url = data.get("audio_url")
     if not audio_url:
         return jsonify({"error": "audio_url is required"}), 400
 
-    # Download audio file
+    # Enforce WAV only
+    if not audio_url.lower().endswith(".wav"):
+        return jsonify({
+            "error": "Only WAV audio files are supported",
+            "example": "https://www2.cs.uic.edu/~i101/SoundFiles/StarWars3.wav"
+        }), 400
+
+    # Download WAV file
     response = requests.get(audio_url)
     if response.status_code != 200:
         return jsonify({"error": "Unable to download audio file"}), 400
@@ -56,7 +63,7 @@ def detect():
     with open(temp_path, "wb") as f:
         f.write(response.content)
 
-    # Extract features
+    # Extract features (this will now work)
     features = extract_features(temp_path)
 
     # AI vs Human
@@ -68,10 +75,8 @@ def detect():
     lang_pred = lang_model.predict([features])[0]
     language = LANG_MAP_REV.get(lang_pred, "unknown")
 
-    # Explanation
     explanation = generate_explanation(classification, auth_prob)
 
-    # Cleanup
     os.remove(temp_path)
 
     return jsonify({
@@ -83,4 +88,5 @@ def detect():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
