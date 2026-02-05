@@ -1,12 +1,12 @@
 import numpy as np
-import soundfile as sf
+from scipy.io import wavfile
 
-EXPECTED_FEATURES = 384  # MUST match training
+EXPECTED_FEATURES = 384  # must match training
 
 def extract_features(audio_path):
-    signal, sr = sf.read(audio_path)
+    sr, signal = wavfile.read(audio_path)
 
-    # Convert stereo → mono
+    # Convert stereo to mono
     if signal.ndim > 1:
         signal = signal.mean(axis=1)
 
@@ -17,11 +17,9 @@ def extract_features(audio_path):
     if max_val > 0:
         signal /= max_val
 
-    # Resample to fixed-length feature vector
+    # Force fixed-length feature vector
     x_old = np.linspace(0, 1, num=len(signal))
     x_new = np.linspace(0, 1, num=EXPECTED_FEATURES)
 
     features = np.interp(x_new, x_old, signal)
     return features.tolist()
-
-
