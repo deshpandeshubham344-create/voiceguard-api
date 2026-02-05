@@ -1,7 +1,6 @@
 flask
 gunicorn
-joblib
 numpy
+joblib
 scikit-learn
-librosa
 soundfile
