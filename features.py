@@ -1,12 +1,24 @@
-import librosa
 import numpy as np
+import soundfile as sf
+
+EXPECTED_FEATURES = 384
 
 def extract_features(audio_path):
-    y, sr = librosa.load(audio_path, sr=16000)
-    mfcc = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=192)
+    signal, sr = sf.read(audio_path)
 
-    mean = np.mean(mfcc, axis=1)
-    std = np.std(mfcc, axis=1)
+    if signal.ndim > 1:
+        signal = signal.mean(axis=1)
 
-    features = np.concatenate([mean, std])
+    # Normalize
+    signal = signal.astype(np.float32)
+    signal = signal / (np.max(np.abs(signal)) + 1e-9)
+
+    # Chunk into fixed-size features
+    features = np.interp(
+        np.linspace(0, len(signal), EXPECTED_FEATURES),
+        np.arange(len(signal)),
+        signal
+    )
+
     return features.tolist()
+
