@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 import os
 import joblib
+import wave
 from features import extract_features
 
 app = Flask(__name__)
@@ -23,12 +24,21 @@ LANG_MAP_REV = {
 def home():
     return jsonify({
         "status": "VoiceGuard API running",
-        "usage": "POST /detect with multipart/form-data (file=.wav)"
+        "usage": "POST /detect with multipart/form-data",
+        "accepted_format": "WAV (PCM, RIFF only)"
     })
 
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"})
+
+def is_valid_wav(path):
+    """Ensure file is a real WAV (RIFF)"""
+    try:
+        with wave.open(path, "rb"):
+            return True
+    except wave.Error:
+        return False
 
 @app.route("/detect", methods=["POST"])
 def detect():
@@ -38,21 +48,32 @@ def detect():
     file = request.files["file"]
 
     if not file.filename.lower().endswith(".wav"):
-        return jsonify({"error": "Only WAV files supported"}), 400
+        return jsonify({
+            "error": "Invalid format",
+            "details": "Only WAV audio files are supported. Convert MP3/MP4 to WAV before upload."
+        }), 400
 
     temp_path = "temp.wav"
 
     try:
         file.save(temp_path)
 
-        # --- Feature extraction (safe) ---
+        # 🔒 Hard WAV validation (prevents MP3 crash)
+        if not is_valid_wav(temp_path):
+            return jsonify({
+                "error": "Invalid WAV file",
+                "details": "File is not a valid RIFF/WAV audio. Do not rename MP3 to WAV."
+            }), 400
+
+        # --- Feature extraction ---
         features = extract_features(temp_path)
 
-        # --- Prediction ---
+        # --- AI vs Human ---
         auth_pred = auth_model.predict([features])[0]
         auth_prob = float(auth_model.predict_proba([features])[0].max())
         classification = "AI_GENERATED" if auth_pred == 1 else "HUMAN"
 
+        # --- Language ---
         lang_pred = lang_model.predict([features])[0]
         language = LANG_MAP_REV.get(lang_pred, "unknown")
 
@@ -63,7 +84,6 @@ def detect():
         })
 
     except Exception as e:
-        # Convert crash → readable error
         return jsonify({
             "error": "Processing failed",
             "details": str(e)
